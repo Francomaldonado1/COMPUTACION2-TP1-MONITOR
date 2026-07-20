@@ -15,12 +15,16 @@ def dibujar_tui(snapshot_global, evento_apagado):
         tabla.add_column("Page Faults (Min/Maj)", justify="right", style="yellow")
         tabla.add_column("FDs", justify="right", style="cyan")
         tabla.add_column("Threads", justify="right", style='blue') 
+        tabla.add_column("Estado", justify="right", style='green')
+        tabla.add_column("CPU (%)", justify="right", style='red')
 
         # 2. Leemos del Snapshot Global
         memoria = snapshot_global.get("memoria", {})
         resumen = snapshot_global.get("resumen", {})
         fds = snapshot_global.get("fds", {})
         threads = snapshot_global.get("threads", {})
+        cpu_estado = snapshot_global.get("cpu_estado", {})
+
 
         # 3. ORDENAMIENTO (Crucial para no saturar la pantalla)
         # Ordenamos los PIDs según quién consume más VmRSS y agarramos solo los primeros 15
@@ -43,18 +47,21 @@ def dibujar_tui(snapshot_global, evento_apagado):
             datos_resumen = resumen.get(pid, {})
             comando = datos_resumen.get("comando", "Cargando...")
 
-            datos_fds = fds.get(pid, {})
-            cantidad_fds = str(datos_fds.get("cantidad", "-")) # Guion si no tenemos permiso
-
             # RECORTAMOS VISUALMENTE: Si el comando es gigante, lo cortamos y le ponemos "..."
             if len(comando) > 45:
                 comando = comando[:42] + "..."
 
+            datos_fds = fds.get(pid, {})
+            cantidad_fds = str(datos_fds.get("cantidad", "-")) # Guion si no tenemos permiso
+
             datos_threads = threads.get(pid, {})
             cantidad_threads = str(datos_threads.get("cantidad", "1"))
-            
+    
+            datos_cpu = cpu_estado.get(pid, {})
+            estado = datos_cpu.get("estado", "-")
+            cpu_percent = f"{datos_cpu.get("cpu_percent", 0.0)}%"
 
-            tabla.add_row(pid, comando, vmsize, vmrss, faults, cantidad_fds, cantidad_threads)
+            tabla.add_row(pid, comando, vmsize, vmrss, faults, cantidad_fds, cantidad_threads, estado, cpu_percent)
 
         return tabla
 
