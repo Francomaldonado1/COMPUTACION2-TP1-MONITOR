@@ -14,11 +14,13 @@ def dibujar_tui(snapshot_global, evento_apagado):
         tabla.add_column("VmRSS (Física)", justify="right", style="green")
         tabla.add_column("Page Faults (Min/Maj)", justify="right", style="yellow")
         tabla.add_column("FDs", justify="right", style="cyan")
+        tabla.add_column("Threads", justify="right", style='blue') 
 
         # 2. Leemos del Snapshot Global
         memoria = snapshot_global.get("memoria", {})
         resumen = snapshot_global.get("resumen", {})
         fds = snapshot_global.get("fds", {})
+        threads = snapshot_global.get("threads", {})
 
         # 3. ORDENAMIENTO (Crucial para no saturar la pantalla)
         # Ordenamos los PIDs según quién consume más VmRSS y agarramos solo los primeros 15
@@ -48,8 +50,11 @@ def dibujar_tui(snapshot_global, evento_apagado):
             if len(comando) > 45:
                 comando = comando[:42] + "..."
 
+            datos_threads = threads.get(pid, {})
+            cantidad_threads = str(datos_threads.get("cantidad", "1"))
+            
 
-            tabla.add_row(pid, comando, vmsize, vmrss, faults, cantidad_fds)
+            tabla.add_row(pid, comando, vmsize, vmrss, faults, cantidad_fds, cantidad_threads)
 
         return tabla
 

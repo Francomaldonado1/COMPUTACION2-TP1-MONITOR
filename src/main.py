@@ -7,6 +7,7 @@ import os
 from src.analizadores.memoria import analizador_memoria
 from src.analizadores.resumen import analizador_resumen
 from src.analizadores.fds import analizador_fds
+from src.analizadores.threads import analizador_threads
 
 # Importamos nuestro nuevo display
 from src.tui import dibujar_tui
@@ -79,12 +80,18 @@ def iniciar_monitor():
             args=(snapshot_global, evento_apagado)
         )
         
+        p_threads = multiprocessing.Process(
+            target=analizador_threads,
+            args=(snapshot_global, evento_apagado)
+        )
+
         # 2. Los arrancamos en paralelo
         p_recolector.start()
         p_memoria.start()
         p_display.start()
         p_resumen.start()
         p_fds.start()
+        p_threads.start()
 
         # El padre queda mudo esperando el Ctrl+C
         while not evento_apagado.is_set():
@@ -96,5 +103,6 @@ def iniciar_monitor():
         p_display.join()
         p_resumen.join()
         p_fds.join()
+        p_threads.join()
 
         print("[Monitor] Apagado total exitoso.")

@@ -3,7 +3,7 @@ import time
 
 def analizador_fds(snapshot_global, evento_apagado):
     print("[FDs] Analizador iniciado...")
-    intervalo = 3
+    intervalo = 5
     
     while not evento_apagado.is_set():
         pids = snapshot_global["sistema"].get("pids_activos", [])
