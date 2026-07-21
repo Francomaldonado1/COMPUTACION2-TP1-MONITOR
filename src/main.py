@@ -11,7 +11,7 @@ from src.analizadores.threads import analizador_threads
 from src.analizadores.cpu import analizador_cpu
 
 # Importamos nuestro nuevo display
-from src.tui import dibujar_tui
+from src.tui import proceso_display
 
 # Simulamos el Recolector (que buscará los PIDs numéricos en /proc)
 def recolector(snapshot_global, evento_apagado):
@@ -67,7 +67,7 @@ def iniciar_monitor():
         )
 
         p_display = multiprocessing.Process(
-            target=dibujar_tui,
+            target=proceso_display,
             args=(snapshot_global, evento_apagado)
         )
 
