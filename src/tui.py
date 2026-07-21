@@ -13,26 +13,27 @@ def escuchar_teclado(evento_apagado):
     """Este HILO corre en segundo plano escuchando el teclado sin bloquear la pantalla"""
     global vista_activa
     
-    # Configuración mágica de Linux para leer teclas de a una sin apretar Enter
-    fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
-    
     try:
-        tty.setcbreak(sys.stdin.fileno())
-        while not evento_apagado.is_set():
-            tecla = sys.stdin.read(1).lower() # Leemos 1 caracter y lo pasamos a minúscula
+        # Forzamos la apertura directa de la terminal física
+        with open('/dev/tty', 'r') as tty_file:
+            fd = tty_file.fileno()
+            old_settings = termios.tcgetattr(fd)
             
-            # Teclas de las vistas obligatorias
-            if tecla in ['1', '2', '3', '4', '5', '6', '7', 'r', 'm', 'f', 't', 's', 'p', 'g']:
-                vista_activa = tecla
-                
-            # Tecla para salir limpiamente
-            elif tecla == 'q':
-                evento_apagado.set()
-                
-    finally:
-        # Es vital restaurar la terminal a su estado normal al salir, o se rompe la consola
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            try:
+                tty.setcbreak(fd)
+                while not evento_apagado.is_set():
+                    tecla = tty_file.read(1).lower()
+                    
+                    if tecla in ['1', '2', '3', '4', '5', '6', '7', 'r', 'm', 'f', 't', 's', 'p', 'g']:
+                        vista_activa = tecla
+                    elif tecla == 'q':
+                        evento_apagado.set()
+            finally:
+                # Restauramos la configuración
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    except Exception as e:
+        # Si falla por algún motivo extraño, no rompemos el programa
+        pass
 
 
 def generar_tabla(snapshot_global):
