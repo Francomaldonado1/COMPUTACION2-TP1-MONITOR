@@ -7,6 +7,10 @@ import select
 from rich.live import Live
 from rich.table import Table
 
+# Convierte bytes a MB con un decimal — usada en la Vista 2
+def a_mb(bytes_val):
+    return f"{bytes_val / (1024 * 1024):.1f}"
+
 # Nuestra variable global compartida en la memoria del proceso
 vista_activa = '1'
 
@@ -98,7 +102,83 @@ def generar_tabla(snapshot_global):
                           cpu_percent, vmrss, cantidad_hilos)
 
     elif vista_activa in ['2', 'm']:
-        tabla = Table(title="Vista 2: Memoria", expand=True)
+        tabla = Table(title="Vista 2: Memoria (VmRSS, Segmentos, Page Faults)", expand=True)
+
+        # Columnas de identidad del proceso
+        tabla.add_column("PID",       style="cyan",    justify="right")
+        tabla.add_column("Comando",   justify="left")
+
+        # Columnas de consumo de RAM (de /proc/<pid>/status, en kB)
+        tabla.add_column("VmSize",    style="blue",    justify="right")   # Espacio virtual total
+        tabla.add_column("VmRSS",     style="magenta", justify="right")   # RAM física usada
+        tabla.add_column("VmHWM",     style="red",     justify="right")   # Pico máximo de RSS
+        tabla.add_column("VmData",    style="blue",    justify="right")   # Segmento de datos
+        tabla.add_column("VmStk",     style="blue",    justify="right")   # Pila (stack)
+        tabla.add_column("VmExe",     style="blue",    justify="right")   # Código ejecutable
+        tabla.add_column("VmLib",     style="blue",    justify="right")   # Librerías compartidas
+        tabla.add_column("VmSwap",    style="yellow",  justify="right")   # En swap
+
+        # Columnas de segmentos mapeados (de /proc/<pid>/maps, convertidos a MB)
+        tabla.add_column("Text(MB)",  style="green",   justify="right")   # Código ejecutable
+        tabla.add_column("Data(MB)",  style="green",   justify="right")   # Datos (sin heap/stack)
+        tabla.add_column("Heap(MB)",  style="green",   justify="right")   # Memoria dinámica
+        tabla.add_column("Stack(MB)", style="green",   justify="right")   # Pila de llamadas
+        tabla.add_column("Shr(MB)",   style="cyan",    justify="right")   # Regiones compartidas
+
+        # Columnas de page faults (de /proc/<pid>/stat)
+        tabla.add_column("MinFlt",    style="dim",     justify="right")   # Minor faults (sin I/O)
+        tabla.add_column("MajFlt",    style="bold red",justify="right")   # Major faults (con I/O)
+
+        resumen = snapshot_global.get("resumen", {})
+        memoria = snapshot_global.get("memoria", {})
+
+        # Ordenamos por VmRSS descendente y tomamos el Top 20
+        pids_validos = [p for p in pids_activos if resumen.get(p, {}).get("comando", "").strip() != ""]
+        pids_ordenados = sorted(
+            pids_validos,
+            key=lambda p: memoria.get(p, {}).get("VmRSS", 0),
+            reverse=True
+        )
+        top_20 = pids_ordenados[:20]
+
+        for pid in top_20:
+            datos_resumen = resumen.get(pid, {})
+            datos_memoria = memoria.get(pid, {})
+            segmentos     = datos_memoria.get("segmentos", {})
+
+            comando = datos_resumen.get("comando", "Cargando...")
+            if len(comando) > 30:
+                comando = comando[:27] + "..."
+
+            # Valores de /proc/<pid>/status (en kB)
+            def kb(clave):
+                return f"{datos_memoria.get(clave, 0):,}"
+
+            vmsize = f"{kb('VmSize')} kB"
+            vmrss  = f"{kb('VmRSS')} kB"
+            vmhwm  = f"{kb('VmHWM')} kB"
+            vmdata = f"{kb('VmData')} kB"
+            vmstk  = f"{kb('VmStk')} kB"
+            vmexe  = f"{kb('VmExe')} kB"
+            vmlib  = f"{kb('VmLib')} kB"
+            vmswap = f"{kb('VmSwap')} kB"
+
+            # Segmentos de /proc/<pid>/maps (en MB)
+            text_mb   = a_mb(segmentos.get("text",   0))
+            data_mb   = a_mb(segmentos.get("data",   0))
+            heap_mb   = a_mb(segmentos.get("heap",   0))
+            stack_mb  = a_mb(segmentos.get("stack",  0))
+            shared_mb = a_mb(segmentos.get("shared", 0))
+
+            minflt = f"{datos_memoria.get('min_flt', 0):,}"
+            majflt = f"{datos_memoria.get('maj_flt', 0):,}"
+
+            tabla.add_row(
+                str(pid), comando,
+                vmsize, vmrss, vmhwm, vmdata, vmstk, vmexe, vmlib, vmswap,
+                text_mb, data_mb, heap_mb, stack_mb, shared_mb,
+                minflt, majflt
+            )
         
     elif vista_activa in ['3', 'f']:
         tabla = Table(title="Vista 3: File Descriptors", expand=True)

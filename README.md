@@ -65,6 +65,33 @@ La consigna presenta una leve inconsistencia: la tabla de "Datos básicos (vista
 
 Los 7 analizadores definidos en la consigna son: resumen, memoria, FDs, threads, señales, scheduling y sistema. No existe un "analizador de CPU" independiente. El cálculo de CPU% (delta de jiffies entre ciclos) y el campo Estado son parte de los **datos básicos del resumen** y por lo tanto responsabilidad de `analizador_resumen.py`.
 
+### ¿Por qué la Vista 2 (Memoria) tiene una tabla muy ancha?
+
+La consigna requiere mostrar 8 campos de `/proc/<pid>/status` (VmSize, VmRSS, VmData, VmStk, VmExe, VmLib, VmHWM, VmSwap), 5 segmentos de `/proc/<pid>/maps` (text, data, heap, stack, shared) y 2 contadores de page faults — 17 columnas en total.
+
+Opciones evaluadas:
+1. **Tabla única ancha** — muestra todo junto, requiere scroll horizontal en terminales angostas
+2. **Dos tablas separadas** — rompe la lectura lineal; `rich` no admite scroll horizontal nativo entre tablas
+3. **Selección de columnas** — sacrifica la completitud exigida por la consigna
+
+**Decisión tomada:** tabla única ancha (opción 1). Prioriza mostrar todos los datos requeridos por la consigna sobre la comodidad en terminales pequeñas. En terminal maximizada es completamente legible. Una versión futura podría implementar paginado de columnas con teclas de navegación horizontal.
+
+### ¿Por qué Vista 2 incluye PID y Comando si la consigna no los lista?
+
+La consigna describe los *datos de memoria* a extraer, no el layout completo de la tabla. Sin una columna de identificación, la tabla pierde todo contexto: los valores de VmRSS o page faults son inútiles si no sabés a qué proceso pertenecen.
+
+**Decisión tomada:** se mantienen PID y Comando (truncado a 30 chars) como columnas de identidad. PID es imprescindible como clave de referencia; Comando hace la tabla legible para un humano. Esta es la práctica estándar en herramientas como `top`, `htop` y `ps`.
+
+### ¿Por qué `shared` se clasifica primero en el parseo de `/proc/<pid>/maps`?
+
+En `leer_segmentos_maps()`, el `if/elif` evalúa condiciones en orden y entra solo en la primera que sea verdadera. El orden importa cuando una región podría satisfacer más de una condición simultáneamente.
+
+Ejemplo teórico: una región con permisos `rw-s` y etiqueta `[heap]` satisfaría tanto "shared" (perms[3] == 's') como "heap" (etiqueta == '[heap]'). Si chequeáramos `[heap]` primero, esa región quedaría mal clasificada como heap en lugar de como shared.
+
+**Decisión tomada:** chequear `shared` primero garantiza que cualquier región marcada como compartida (`s`) se clasifique como tal, independientemente de su etiqueta. Las regiones privadas (`p`) nunca entran en ese branch, así que el resto de la lógica opera sin ambigüedad.
+
+---
+
 ### IPC: ¿Por qué `Manager` y no `Value`/`Array`?
 
 `multiprocessing.Value` y `Array` están optimizados para tipos simples (un entero, un float, un arreglo de bytes). El snapshot de este monitor es un diccionario anidado con estructura variable por proceso — usar `Value`/`Array` requeriría serializar manualmente toda la estructura. `Manager.dict` maneja eso de forma transparente a costa de overhead de IPC, que es aceptable dado que los intervalos de refresco son de segundos.
