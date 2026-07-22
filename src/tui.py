@@ -3,6 +3,7 @@ import threading
 import sys
 import tty
 import termios
+import select
 from rich.live import Live
 from rich.table import Table
 
@@ -14,7 +15,6 @@ def escuchar_teclado(evento_apagado):
     global vista_activa
     
     try:
-        # Forzamos la apertura directa de la terminal física
         with open('/dev/tty', 'r') as tty_file:
             fd = tty_file.fileno()
             old_settings = termios.tcgetattr(fd)
@@ -22,17 +22,19 @@ def escuchar_teclado(evento_apagado):
             try:
                 tty.setcbreak(fd)
                 while not evento_apagado.is_set():
-                    tecla = tty_file.read(1).lower()
+                    # select escucha el archivo. Si en 0.5 seg no hay teclas, devuelve listas vacías
+                    dr, dw, de = select.select([tty_file], [], [], 0.5)
                     
-                    if tecla in ['1', '2', '3', '4', '5', '6', '7', 'r', 'm', 'f', 't', 's', 'p', 'g']:
-                        vista_activa = tecla
-                    elif tecla == 'q':
-                        evento_apagado.set()
+                    if dr: # Si hay datos listos para leer (alguien apretó una tecla)
+                        tecla = tty_file.read(1).lower()
+                        
+                        if tecla in ['1', '2', '3', '4', '5', '6', '7', 'r', 'm', 'f', 't', 's', 'p', 'g']:
+                            vista_activa = tecla
+                        elif tecla == 'q':
+                            evento_apagado.set()
             finally:
-                # Restauramos la configuración
                 termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
     except Exception as e:
-        # Si falla por algún motivo extraño, no rompemos el programa
         pass
 
 
@@ -45,7 +47,58 @@ def generar_tabla(snapshot_global):
     
     if vista_activa in ['1', 'r']:
         tabla = Table(title="Vista 1: Resumen (Estado, CPU, RSS, Threads)", expand=True)
-        # Acá definís tus columnas de Resumen y llenás el for...
+        
+        # Columnas
+        tabla.add_column("PID",     style="cyan",       justify="right")
+        tabla.add_column("PPID",    style="dim cyan",    justify="right")
+        tabla.add_column("Usuario", style="green",       justify="left")
+        tabla.add_column("Estado",  style="bold green",  justify="center")
+        tabla.add_column("Comando", justify="left")
+        tabla.add_column("CPU %",   style="yellow",      justify="right")
+        tabla.add_column("RSS (KB)",style="magenta",     justify="right")
+        tabla.add_column("Hilos",   style="blue",        justify="right")
+
+        # Traemos diccionarios
+        pids_activos = snapshot_global.get("sistema", {}).get("pids_activos", [])
+        resumen = snapshot_global.get("resumen", {})
+        memoria = snapshot_global.get("memoria", {})
+        threads = snapshot_global.get("threads", {})
+        
+        # Filtramos los procesos del kernel (los que no tienen comando)
+        pids_validos = [p for p in pids_activos if resumen.get(p, {}).get("comando", "").strip() != ""]
+        
+        # Ordenamos por Memoria RSS (de mayor a menor)
+        pids_ordenados = sorted(
+            pids_validos, 
+            key=lambda p: memoria.get(p, {}).get("VmRSS", 0), 
+            reverse=True
+        )
+        
+        # Nos quedamos solo con el Top 20
+        top_20 = pids_ordenados[:20]
+
+        # Iteramos sobre el top 20 en lugar de todos los activos
+        for pid in top_20:
+            datos_resumen = resumen.get(pid, {})
+            datos_memoria = memoria.get(pid, {})
+            datos_threads = threads.get(pid, {})
+
+            ppid    = datos_resumen.get("ppid",    "?")
+            usuario = datos_resumen.get("usuario",  "?")
+            comando = datos_resumen.get("comando", "Cargando...")
+            if len(comando) > 45:
+                comando = comando[:42] + "..."
+
+            estado         = datos_resumen.get("estado", "-")
+            cpu_percent    = f"{datos_resumen.get('cpu_percent', 0.0):.1f} %"
+            vmrss          = f"{datos_memoria.get('VmRSS', 0):,}"
+            cantidad_hilos = str(datos_threads.get("cantidad", "1"))
+
+            tabla.add_row(str(pid), str(ppid), str(usuario), estado, comando,
+                          cpu_percent, vmrss, cantidad_hilos)
+
+    elif vista_activa in ['2', 'm']:
+        tabla = Table(title="Vista 2: Memoria", expand=True)
         
     elif vista_activa in ['3', 'f']:
         tabla = Table(title="Vista 3: File Descriptors", expand=True)
