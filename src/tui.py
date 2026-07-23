@@ -7,9 +7,9 @@ import select
 from rich.live import Live
 from rich.table import Table
 
-# Convierte bytes a MB con un decimal — usada en la Vista 2
+# Convierte bytes a MB con un decimal y unidad — usada en la Vista 2
 def a_mb(bytes_val):
-    return f"{bytes_val / (1024 * 1024):.1f}"
+    return f"{bytes_val / (1024 * 1024):.1f} MB"
 
 # Nuestra variable global compartida en la memoria del proceso
 vista_activa = '1'
@@ -182,7 +182,57 @@ def generar_tabla(snapshot_global):
         
     elif vista_activa in ['3', 'f']:
         tabla = Table(title="Vista 3: File Descriptors", expand=True)
-        # Acá definís tus columnas de FDs y llenás el for...
+
+        tabla.add_column("PID",      style="cyan",    justify="right")
+        tabla.add_column("Comando",  justify="left")
+        tabla.add_column("Total",    style="bold",    justify="right")  # cantidad total de FDs
+        tabla.add_column("Pipes",    style="yellow",  justify="right")
+        tabla.add_column("Sockets",  style="magenta", justify="right")
+        tabla.add_column("TTYs",     style="green",   justify="right")
+        tabla.add_column("Files",    style="blue",    justify="right")
+        tabla.add_column("Other",    style="dim",     justify="right")  # anon_inode, etc.
+        tabla.add_column("Muestra FDs", justify="left")                 # primeros 10 FDs con destino
+
+        resumen = snapshot_global.get("resumen", {})
+        fds     = snapshot_global.get("fds", {})
+
+        # Ordenamos por cantidad de FDs (de mayor a menor) y tomamos el Top 20
+        pids_validos = [p for p in pids_activos if resumen.get(p, {}).get("comando", "").strip() != ""]
+        pids_ordenados = sorted(
+            pids_validos,
+            key=lambda p: fds.get(p, {}).get("cantidad", 0),
+            reverse=True
+        )
+        top_20 = pids_ordenados[:20]
+
+        for pid in top_20:
+            datos_resumen = resumen.get(pid, {})
+            datos_fds     = fds.get(pid, {})
+
+            comando = datos_resumen.get("comando", "Cargando...")
+            if len(comando) > 30:
+                comando = comando[:27] + "..."
+
+            total   = str(datos_fds.get("cantidad", 0))
+            pipes   = str(datos_fds.get("pipes",    0))
+            sockets = str(datos_fds.get("sockets",  0))
+            ttys    = str(datos_fds.get("tty",      0))
+            files   = str(datos_fds.get("files",    0))
+            other   = str(datos_fds.get("other",    0))
+
+            # Construimos el texto multilínea con la muestra de FDs
+            muestra = datos_fds.get("muestra", [])
+            if muestra:
+                lineas = [f"fd{e['fd']:>3} → {e['destino'][:40]:<40} ({e['tipo']})" for e in muestra]
+                muestra_txt = "\n".join(lineas)
+            else:
+                muestra_txt = "(sin datos)"
+
+            tabla.add_row(
+                str(pid), comando,
+                total, pipes, sockets, ttys, files, other,
+                muestra_txt
+            )
         
     else:
         # Un placeholder para las vistas que todavía no construimos

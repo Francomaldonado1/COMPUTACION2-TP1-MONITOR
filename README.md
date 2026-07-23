@@ -92,6 +92,16 @@ Ejemplo teórico: una región con permisos `rw-s` y etiqueta `[heap]` satisfarí
 
 ---
 
+### ¿Por qué Vista 3 muestra solo una muestra de 10 FDs por proceso?
+
+La consigna requiere mostrar el destino de cada FD abierto. El problema es que un proceso moderno puede tener cientos de FDs (Brave o Antigravity tienen entre 50 y 200+). Mostrar todos en una tabla en tiempo real haría que cada fila del proceso tuviera cientos de líneas — la tabla sería inutilizable.
+
+**Decisión tomada:** almacenamos y mostramos los primeros **10 FDs ordenados numéricamente** (`sorted(key=int)`) como muestra representativa. Esto garantiza que stdin (fd 0), stdout (fd 1) y stderr (fd 2) siempre aparezcan, dando contexto inmediato sobre cómo está conectado el proceso (¿a una terminal? ¿a un pipe? ¿a /dev/null?). Los contadores por tipo (Pipes, Sockets, TTYs, Files, Other) muestran el total real sin limitación.
+
+Esta solución cumple el espíritu de la consigna — mostrar destinos reales de FDs — sin sacrificar la usabilidad de la TUI.
+
+---
+
 ### IPC: ¿Por qué `Manager` y no `Value`/`Array`?
 
 `multiprocessing.Value` y `Array` están optimizados para tipos simples (un entero, un float, un arreglo de bytes). El snapshot de este monitor es un diccionario anidado con estructura variable por proceso — usar `Value`/`Array` requeriría serializar manualmente toda la estructura. `Manager.dict` maneja eso de forma transparente a costa de overhead de IPC, que es aceptable dado que los intervalos de refresco son de segundos.
