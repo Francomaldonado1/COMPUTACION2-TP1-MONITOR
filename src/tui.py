@@ -234,6 +234,50 @@ def generar_tabla(snapshot_global):
                 muestra_txt
             )
         
+    elif vista_activa in ['4', 't']:
+        tabla = Table(title="Vista 4: Threads", expand=True)
+
+        tabla.add_column("PID",      style="cyan",    justify="right")
+        tabla.add_column("Comando",  justify="left")
+        tabla.add_column("Hilos",    style="bold",    justify="right")  # cantidad total
+        tabla.add_column("Detalle de Hilos", justify="left")            # primeros 10 con info
+
+        resumen = snapshot_global.get("resumen",  {})
+        threads = snapshot_global.get("threads",  {})
+
+        # Ordenamos por cantidad de hilos (de mayor a menor) y tomamos el Top 20
+        pids_validos = [p for p in pids_activos if resumen.get(p, {}).get("comando", "").strip() != ""]
+        pids_ordenados = sorted(
+            pids_validos,
+            key=lambda p: threads.get(p, {}).get("cantidad", 0),
+            reverse=True
+        )
+        top_20 = pids_ordenados[:20]
+
+        for pid in top_20:
+            datos_resumen = resumen.get(pid, {})
+            datos_threads = threads.get(pid, {})
+
+            comando = datos_resumen.get("comando", "Cargando...")
+            if len(comando) > 30:
+                comando = comando[:27] + "..."
+
+            cantidad = str(datos_threads.get("cantidad", 0))
+
+            # Construimos el detalle multilínea con la muestra de hilos
+            hilos_lista = datos_threads.get("hilos", [])
+            if hilos_lista:
+                lineas = [
+                    f"tid{h['tid']:>6}  {h['nombre']:<16}  {h['estado']}  "
+                    f"CPU:{h['cpu_pct']:>5.1f}%  cs:{h['vol_cs']:,}v/{h['invol_cs']:,}i"
+                    for h in hilos_lista
+                ]
+                detalle_txt = "\n".join(lineas)
+            else:
+                detalle_txt = "(sin datos)"
+
+            tabla.add_row(str(pid), comando, cantidad, detalle_txt)
+
     else:
         # Un placeholder para las vistas que todavía no construimos
         tabla = Table(title=f"Vista {vista_activa} (En construcción)", expand=True)

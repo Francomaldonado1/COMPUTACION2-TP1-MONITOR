@@ -102,6 +102,14 @@ Esta solución cumple el espíritu de la consigna — mostrar destinos reales de
 
 ---
 
+### ¿Por qué Vista 4 muestra solo 10 hilos por proceso?
+
+Por el mismo motivo que la muestra de FDs: procesos como navegadores o servidores pueden tener decenas o cientos de hilos. Mostrar todos haría la tabla ilegible en tiempo real.
+
+**Decisión tomada:** se almacenan y muestran los primeros **10 hilos ordenados por TID** (el hilo principal siempre tiene el TID == PID y aparece primero). La columna "Hilos" muestra el total real. El detalle multilínea incluye TID, nombre (`comm`), estado, CPU% y context switches voluntarios/involuntarios.
+
+---
+
 ### IPC: ¿Por qué `Manager` y no `Value`/`Array`?
 
 `multiprocessing.Value` y `Array` están optimizados para tipos simples (un entero, un float, un arreglo de bytes). El snapshot de este monitor es un diccionario anidado con estructura variable por proceso — usar `Value`/`Array` requeriría serializar manualmente toda la estructura. `Manager.dict` maneja eso de forma transparente a costa de overhead de IPC, que es aceptable dado que los intervalos de refresco son de segundos.
