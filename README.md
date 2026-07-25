@@ -110,6 +110,14 @@ Por el mismo motivo que la muestra de FDs: procesos como navegadores o servidore
 
 ---
 
+### ¿Por qué Vista 5 (Señales) agrupa las señales de tiempo real?
+
+Al decodificar las máscaras de señales de `/proc/<pid>/status`, muchos procesos del sistema y aplicaciones multihilo (como `init` o los que usan glibc/NPTL) bloquean o atrapan una gran cantidad de señales de tiempo real (desde la 32 a la 64). Mostrar los nombres de todas estas señales individualmente provocaba que cada fila ocupara demasiado espacio vertical, arruinando la legibilidad de la tabla.
+
+**Decisión tomada:** el analizador decodifica y muestra por nombre las **señales estándar (1 a 31)**, que son las más útiles para el monitoreo general. Si el proceso tiene señales de tiempo real activas, se agrupan en un resumen corto al final (ej: `(+ 33 de tiempo real)`). Esto mantiene la fidelidad de la información sin romper la interfaz gráfica.
+
+---
+
 ### IPC: ¿Por qué `Manager` y no `Value`/`Array`?
 
 `multiprocessing.Value` y `Array` están optimizados para tipos simples (un entero, un float, un arreglo de bytes). El snapshot de este monitor es un diccionario anidado con estructura variable por proceso — usar `Value`/`Array` requeriría serializar manualmente toda la estructura. `Manager.dict` maneja eso de forma transparente a costa de overhead de IPC, que es aceptable dado que los intervalos de refresco son de segundos.

@@ -278,6 +278,44 @@ def generar_tabla(snapshot_global):
 
             tabla.add_row(str(pid), comando, cantidad, detalle_txt)
 
+    elif vista_activa in ['5', 's']:
+        tabla = Table(title="Vista 5: Señales", expand=True)
+
+        tabla.add_column("PID",      style="cyan",    justify="right")
+        tabla.add_column("Comando",  justify="left")
+        tabla.add_column("Bloqueadas (SigBlk)", style="yellow")
+        tabla.add_column("Ignoradas (SigIgn)",  style="dim")
+        tabla.add_column("Atrapadas (SigCgt)",  style="green")
+        tabla.add_column("Pdte. Proc (SigPnd)", style="red")
+        tabla.add_column("Pdte. Grp (ShdPnd)",  style="red")
+
+        resumen = snapshot_global.get("resumen", {})
+        senales = snapshot_global.get("senales", {})
+
+        # Para señales, ordenamos numéricamente por PID
+        pids_validos = [p for p in pids_activos if resumen.get(p, {}).get("comando", "").strip() != ""]
+        pids_ordenados = sorted(pids_validos, key=int)
+        top_20 = pids_ordenados[:20]
+
+        for pid in top_20:
+            datos_resumen = resumen.get(pid, {})
+            datos_senales = senales.get(pid, {})
+
+            comando = datos_resumen.get("comando", "Cargando...")
+            if len(comando) > 30:
+                comando = comando[:27] + "..."
+
+            sig_blk = datos_senales.get("SigBlk", "-")
+            sig_ign = datos_senales.get("SigIgn", "-")
+            sig_cgt = datos_senales.get("SigCgt", "-")
+            sig_pnd = datos_senales.get("SigPnd", "-")
+            shd_pnd = datos_senales.get("ShdPnd", "-")
+
+            tabla.add_row(
+                str(pid), comando,
+                sig_blk, sig_ign, sig_cgt, sig_pnd, shd_pnd
+            )
+
     else:
         # Un placeholder para las vistas que todavía no construimos
         tabla = Table(title=f"Vista {vista_activa} (En construcción)", expand=True)
