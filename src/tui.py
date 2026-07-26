@@ -6,6 +6,7 @@ import termios
 import select
 from rich.live import Live
 from rich.table import Table
+from rich.markup import escape
 
 # Convierte bytes a MB con un decimal y unidad — usada en la Vista 2
 def a_mb(bytes_val):
@@ -90,8 +91,9 @@ def generar_tabla(snapshot_global):
             ppid    = datos_resumen.get("ppid",    "?")
             usuario = datos_resumen.get("usuario",  "?")
             comando = datos_resumen.get("comando", "Cargando...")
-            if len(comando) > 45:
-                comando = comando[:42] + "..."
+            if len(comando) > 63:
+                comando = comando[:60] + "..."
+            comando = escape(comando)
 
             estado         = datos_resumen.get("estado", "-")
             cpu_percent    = f"{datos_resumen.get('cpu_percent', 0.0):.1f} %"
@@ -149,6 +151,7 @@ def generar_tabla(snapshot_global):
             comando = datos_resumen.get("comando", "Cargando...")
             if len(comando) > 30:
                 comando = comando[:27] + "..."
+            comando = escape(comando)
 
             # Valores de /proc/<pid>/status (en kB)
             def kb(clave):
@@ -212,6 +215,7 @@ def generar_tabla(snapshot_global):
             comando = datos_resumen.get("comando", "Cargando...")
             if len(comando) > 30:
                 comando = comando[:27] + "..."
+            comando = escape(comando)
 
             total   = str(datos_fds.get("cantidad", 0))
             pipes   = str(datos_fds.get("pipes",    0))
@@ -261,6 +265,7 @@ def generar_tabla(snapshot_global):
             comando = datos_resumen.get("comando", "Cargando...")
             if len(comando) > 30:
                 comando = comando[:27] + "..."
+            comando = escape(comando)
 
             cantidad = str(datos_threads.get("cantidad", 0))
 
@@ -292,9 +297,14 @@ def generar_tabla(snapshot_global):
         resumen = snapshot_global.get("resumen", {})
         senales = snapshot_global.get("senales", {})
 
-        # Para señales, ordenamos numéricamente por PID
+        # Para señales, ordenamos por la cantidad de señales bloqueadas/atrapadas
+        # para ver los procesos más "interesantes" en lugar de solo los primeros PIDs
         pids_validos = [p for p in pids_activos if resumen.get(p, {}).get("comando", "").strip() != ""]
-        pids_ordenados = sorted(pids_validos, key=int)
+        pids_ordenados = sorted(
+            pids_validos,
+            key=lambda p: len(senales.get(p, {}).get("SigBlk", "")) + len(senales.get(p, {}).get("SigCgt", "")),
+            reverse=True
+        )
         top_20 = pids_ordenados[:20]
 
         for pid in top_20:
@@ -304,6 +314,7 @@ def generar_tabla(snapshot_global):
             comando = datos_resumen.get("comando", "Cargando...")
             if len(comando) > 30:
                 comando = comando[:27] + "..."
+            comando = escape(comando)
 
             sig_blk = datos_senales.get("SigBlk", "-")
             sig_ign = datos_senales.get("SigIgn", "-")
@@ -314,6 +325,66 @@ def generar_tabla(snapshot_global):
             tabla.add_row(
                 str(pid), comando,
                 sig_blk, sig_ign, sig_cgt, sig_pnd, shd_pnd
+            )
+
+    elif vista_activa in ['6', 'c']:
+        tabla = Table(title="Vista 6: Scheduling", expand=True)
+
+        tabla.add_column("PID",      style="cyan",    justify="right")
+        tabla.add_column("Comando",  justify="left")
+        tabla.add_column("Política", style="magenta")
+        tabla.add_column("Prio / Nice / RT", style="yellow")
+        tabla.add_column("CPU Affinity", style="green")
+        tabla.add_column("Ctx Swtch (v/iv)", style="blue")
+        tabla.add_column("Time (U/S seg)", style="dim")
+        tabla.add_column("SID / PGID", style="bold")
+
+        resumen = snapshot_global.get("resumen", {})
+        sched = snapshot_global.get("scheduling", {})
+
+        # Ordenamos primero por prioridad interna (menor número = mayor prioridad)
+        # y desempatamos por la cantidad de context switches (los más activos)
+        pids_validos = [p for p in pids_activos if resumen.get(p, {}).get("comando", "").strip() != ""]
+        pids_ordenados = sorted(
+            pids_validos,
+            key=lambda p: (
+                int(sched.get(p, {}).get("prioridad", 20)),
+                -int(sched.get(p, {}).get("vol_cs", 0))
+            )
+        )
+        top_20 = pids_ordenados[:20]
+
+        for pid in top_20:
+            datos_resumen = resumen.get(pid, {})
+            datos_sched = sched.get(pid, {})
+
+            comando = datos_resumen.get("comando", "Cargando...")
+            if len(comando) > 20:
+                comando = comando[:17] + "..."
+            comando = escape(comando)
+
+            politica = datos_sched.get("politica", "-")
+            prio = datos_sched.get("prioridad", "-")
+            nice = datos_sched.get("nice", "-")
+            rt_prio = datos_sched.get("rt_prio", "-")
+            affinity = datos_sched.get("affinity", "-")
+            vol_cs = datos_sched.get("vol_cs", "0")
+            invol_cs = datos_sched.get("invol_cs", "0")
+            utime = str(datos_sched.get("utime", "0"))
+            stime = str(datos_sched.get("stime", "0"))
+            sid = str(datos_sched.get("sid", "-"))
+            pgid = str(datos_sched.get("pgid", "-"))
+
+            # Formateos agrupados
+            prio_str = f"{prio} / {nice} / {rt_prio}"
+            cs_str = f"{vol_cs} / {invol_cs}"
+            time_str = f"{utime} / {stime}"
+            sid_pgid_str = f"{sid} / {pgid}"
+
+            tabla.add_row(
+                str(pid), comando,
+                politica, prio_str, affinity,
+                cs_str, time_str, sid_pgid_str
             )
 
     else:

@@ -118,6 +118,15 @@ Al decodificar las máscaras de señales de `/proc/<pid>/status`, muchos proceso
 
 ---
 
+### Criterios de ordenamiento (Top 20) en Vistas 5 y 6
+
+Para que la interfaz gráfica sea verdaderamente útil como herramienta de monitoreo, no alcanza con listar los primeros 20 PIDs numéricamente (lo que suele mostrar puros hilos pasivos del kernel). Decidimos implementar un filtrado inteligente en la TUI:
+
+- **Vista 5 (Señales):** Ordena descendentemente según la cantidad de señales bloqueadas (`SigBlk`) y atrapadas (`SigCgt`). Esto saca a la luz los procesos de usuario más complejos (ej: navegadores, entornos de escritorio) que configuran su propio manejo de señales.
+- **Vista 6 (Scheduling):** Ordena primero por **prioridad absoluta del kernel** (donde los valores menores como `-100` ganan), y desempata por la cantidad de **context switches voluntarios**. Así, los primeros procesos en pantalla son siempre los más críticos del sistema (procesos RT) ordenados por qué tan activos están en ese preciso instante.
+
+---
+
 ### IPC: ¿Por qué `Manager` y no `Value`/`Array`?
 
 `multiprocessing.Value` y `Array` están optimizados para tipos simples (un entero, un float, un arreglo de bytes). El snapshot de este monitor es un diccionario anidado con estructura variable por proceso — usar `Value`/`Array` requeriría serializar manualmente toda la estructura. `Manager.dict` maneja eso de forma transparente a costa de overhead de IPC, que es aceptable dado que los intervalos de refresco son de segundos.
