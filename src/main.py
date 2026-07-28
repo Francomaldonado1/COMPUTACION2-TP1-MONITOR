@@ -10,6 +10,7 @@ from src.analizadores.fds import analizador_fds
 from src.analizadores.threads import analizador_threads
 from src.analizadores.senales import analizador_senales
 from src.analizadores.scheduling import analizador_scheduling
+from src.analizadores.sistema_global import analizador_sistema_global
 
 # Importamos nuestro nuevo display
 from src.tui import proceso_display
@@ -96,6 +97,11 @@ def iniciar_monitor():
             target=analizador_scheduling,
             args=(snapshot_global, evento_apagado)
         )
+        
+        p_sistema_global = multiprocessing.Process(
+            target=analizador_sistema_global,
+            args=(snapshot_global, evento_apagado)
+        )
 
         # 2. Los arrancamos en paralelo
         p_recolector.start()
@@ -106,6 +112,7 @@ def iniciar_monitor():
         p_threads.start()
         p_senales.start()
         p_scheduling.start()
+        p_sistema_global.start()
 
         # El padre queda mudo esperando el Ctrl+C
         while not evento_apagado.is_set():
@@ -120,5 +127,6 @@ def iniciar_monitor():
         p_threads.join()
         p_senales.join()
         p_scheduling.join()
+        p_sistema_global.join()
         
         print("[Monitor] Apagado total exitoso.")

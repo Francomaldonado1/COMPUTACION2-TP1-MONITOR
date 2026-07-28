@@ -387,6 +387,65 @@ def generar_tabla(snapshot_global):
                 cs_str, time_str, sid_pgid_str
             )
 
+    elif vista_activa in ['7', 'g']:
+        tabla = Table(title="Vista 7: Stats Globales del Sistema", expand=True, show_lines=True)
+
+        tabla.add_column("Categoría", style="cyan", justify="right", ratio=1)
+        tabla.add_column("Métricas", style="green", ratio=3)
+
+        sys_stats = snapshot_global.get("sistema_global", {})
+        resumen = snapshot_global.get("resumen", {})
+        memoria_snap = snapshot_global.get("memoria", {})
+
+        # CPU
+        cpu_str = (f"User: {sys_stats.get('cpu_user', 0.0)}% | "
+                   f"System: {sys_stats.get('cpu_system', 0.0)}% | "
+                   f"Idle: {sys_stats.get('cpu_idle', 0.0)}% | "
+                   f"IOWait: {sys_stats.get('cpu_iowait', 0.0)}%")
+        tabla.add_row("CPU Global", cpu_str)
+
+        # Load Average
+        tabla.add_row("Load Average (1, 5, 15 min)", sys_stats.get("loadavg", "-"))
+
+        # Memoria
+        mem = sys_stats.get("meminfo", {})
+        mem_str = (f"Total: {a_mb(mem.get('MemTotal',0)*1024)} | "
+                   f"Libre: {a_mb(mem.get('MemFree',0)*1024)} | "
+                   f"Buffers: {a_mb(mem.get('Buffers',0)*1024)}\n"
+                   f"Cached: {a_mb(mem.get('Cached',0)*1024)} | "
+                   f"Swap Total: {a_mb(mem.get('SwapTotal',0)*1024)} | "
+                   f"Swap Libre: {a_mb(mem.get('SwapFree',0)*1024)}")
+        tabla.add_row("Memoria", mem_str)
+
+        # Tiempos
+        import datetime
+        uptime_segs = sys_stats.get("uptime", 0)
+        uptime_str = str(datetime.timedelta(seconds=int(uptime_segs)))
+
+        btime_segs = sys_stats.get("btime", 0)
+        btime_str = datetime.datetime.fromtimestamp(btime_segs).strftime("%Y-%m-%d %H:%M:%S") if btime_segs else "-"
+
+        tabla.add_row("Tiempos", f"Uptime: {uptime_str} | Boot Time: {btime_str}")
+
+        # Estados
+        est = sys_stats.get("estados", {})
+        est_str = (f"Total: {est.get('total', 0)} | Running (R): {est.get('R', 0)} | "
+                   f"Sleeping (S): {est.get('S', 0)} | Zombies (Z): {est.get('Z', 0)}\n"
+                   f"Threads Totales: {est.get('threads', 0)}")
+        tabla.add_row("Procesos y Threads", est_str)
+
+        # Top 3 (calculados al vuelo por la TUI usando los datos que ya existen)
+        pids_validos = [p for p in pids_activos if resumen.get(p, {}).get("comando", "").strip() != ""]
+
+        top_cpu = sorted(pids_validos, key=lambda p: resumen.get(p, {}).get("cpu_percent", 0.0), reverse=True)[:3]
+        top_cpu_str = "\n".join([f"{i+1}. PID {p} ({escape(resumen.get(p,{}).get('comando',''))[:20]}...) - {resumen.get(p,{}).get('cpu_percent', 0)}%" for i, p in enumerate(top_cpu)])
+        
+        top_mem = sorted(pids_validos, key=lambda p: memoria_snap.get(p, {}).get("VmRSS", 0), reverse=True)[:3]
+        top_mem_str = "\n".join([f"{i+1}. PID {p} ({escape(resumen.get(p,{}).get('comando',''))[:20]}...) - {a_mb(memoria_snap.get(p,{}).get('VmRSS', 0) * 1024)}" for i, p in enumerate(top_mem)])
+
+        tabla.add_row("Top 3 Procesos (CPU)", top_cpu_str if top_cpu_str else "-")
+        tabla.add_row("Top 3 Procesos (Memoria)", top_mem_str if top_mem_str else "-")
+
     else:
         # Un placeholder para las vistas que todavía no construimos
         tabla = Table(title=f"Vista {vista_activa} (En construcción)", expand=True)
