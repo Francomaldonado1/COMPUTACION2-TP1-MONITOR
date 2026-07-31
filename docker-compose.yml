@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  monitor:
+    build: .
+    # Fundamental para que el monitor vea los procesos reales de tu compu y no solo los del contenedor
+    pid: "host"
+    # Necesario para poder leer carpetas protegidas dentro de /proc (ej: file descriptors)
+    privileged: true
+    # Necesario para que la TUI reciba las teclas que presionás y dibuje bien
+    stdin_open: true
+    tty: true
+    # (Opcional) mapeamos la carpeta para que si hacés un snapshot (SIGUSR1), el .json se guarde acá afuera
+    volumes:
+      - ./:/app

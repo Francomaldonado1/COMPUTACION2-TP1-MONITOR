@@ -185,13 +185,37 @@ La decisión fue implementar una **ventana de scroll de tamaño fijo, pero adapt
 ## Cómo correr y testear
 
 ```bash
-# Con Docker (recomendado)
-docker compose up --build
+# Opción 1: Con Docker (recomendado, no ensucia tu sistema)
+docker compose run --build --rm monitor
 
-# Local (requiere Linux)
+# Opción 2: Local (requiere Linux)
+# Se recomienda usar un entorno virtual para no tener conflictos de dependencias:
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 python3 app.py
 ```
+
+### Cómo probar las señales
+
+Para probar el manejo de señales, necesitas enviarlas desde otra terminal al proceso padre del monitor (excepto SIGWINCH o SIGINT, que se pueden generar directamente).
+
+1. Con el monitor corriendo, abrí una **nueva terminal**.
+2. Buscá el PID del proceso padre ejecutando:
+   ```bash
+   pgrep -f "python3 app.py" | head -n 1
+   ```
+3. Enviale la señal deseada usando `kill` (**nota:** si estás corriendo la app con Docker, vas a necesitar usar `sudo kill` porque el proceso pertenece a `root`):
+   - **SIGHUP** (Recargar config): `kill -HUP <PID>`
+   - **SIGUSR1** (Guardar snapshot JSON): `kill -USR1 <PID>`
+   - **SIGUSR2** (Activar/Desactivar modo Verbose): `kill -USR2 <PID>`
+   - **SIGTERM** (Apagado ordenado): `kill -TERM <PID>`
+
+Otras señales automáticas/teclado:
+   - **SIGINT** (Apagado ordenado): Presionando `Ctrl+C` en la terminal donde corre el monitor.
+   - **SIGWINCH** (Repintado TUI): Redimensionando la ventana de la terminal con el mouse.
+   
+Podrás ver las notificaciones de éxito directamente en la barra inferior de la TUI.
 
 ---
 
