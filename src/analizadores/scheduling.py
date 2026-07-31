@@ -10,9 +10,8 @@ POLITICAS = {
     "6": "DEADLINE (6)"
 }
 
-def analizador_scheduling(snapshot_global, evento_apagado):
+def analizador_scheduling(snapshot_global, evento_apagado, intervalo_val):
     print("[Scheduling] Analizador iniciado...")
-    intervalo = 5
     hertz = os.sysconf("SC_CLK_TCK")
 
     while not evento_apagado.is_set():
@@ -85,4 +84,4 @@ def analizador_scheduling(snapshot_global, evento_apagado):
                 continue
                 
         snapshot_global["scheduling"] = scheduling_local
-        time.sleep(intervalo)
+        time.sleep(intervalo_val.value)

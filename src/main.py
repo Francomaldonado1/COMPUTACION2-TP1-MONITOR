@@ -50,6 +50,17 @@ def iniciar_monitor():
             "sistema": manager.dict({"pids_activos": []}) # Acá arranca nuestro Recolector
         })
 
+        # Creamos los valores de intervalo compartidos (float) con sus valores default de la consigna
+        intervalos = {
+            '1': multiprocessing.Value('f', 2.0),  # Resumen
+            '2': multiprocessing.Value('f', 3.0),  # Memoria
+            '3': multiprocessing.Value('f', 5.0),  # FDs
+            '4': multiprocessing.Value('f', 2.0),  # Threads
+            '5': multiprocessing.Value('f', 10.0), # Señales
+            '6': multiprocessing.Value('f', 10.0), # Scheduling
+            '7': multiprocessing.Value('f', 2.0),  # Sistema Global
+        }
+
         # 3. Configuramos la señal de apagado limpio
         def mi_manejador(signum, frame):
             print("\n[Monitor] ¡SIGINT (Ctrl+C) detectado! Apagando...")
@@ -63,44 +74,44 @@ def iniciar_monitor():
             args=(snapshot_global, evento_apagado)
         )
 
-        p_memoria = multiprocessing.Process(
-            target=analizador_memoria,
-            args=(snapshot_global, evento_apagado)
-        )
-
         p_display = multiprocessing.Process(
             target=proceso_display,
-            args=(snapshot_global, evento_apagado)
+            args=(snapshot_global, evento_apagado, intervalos)
         )
 
         p_resumen = multiprocessing.Process(
             target=analizador_resumen,
-            args=(snapshot_global, evento_apagado)
+            args=(snapshot_global, evento_apagado, intervalos['1'])
+        )
+
+        p_memoria = multiprocessing.Process(
+            target=analizador_memoria,
+            args=(snapshot_global, evento_apagado, intervalos['2'])
         )
 
         p_fds = multiprocessing.Process(
             target=analizador_fds,
-            args=(snapshot_global, evento_apagado)
+            args=(snapshot_global, evento_apagado, intervalos['3'])
         )
         
         p_threads = multiprocessing.Process(
             target=analizador_threads,
-            args=(snapshot_global, evento_apagado)
+            args=(snapshot_global, evento_apagado, intervalos['4'])
         )
         
         p_senales = multiprocessing.Process(
             target=analizador_senales,
-            args=(snapshot_global, evento_apagado)
+            args=(snapshot_global, evento_apagado, intervalos['5'])
         )
         
         p_scheduling = multiprocessing.Process(
             target=analizador_scheduling,
-            args=(snapshot_global, evento_apagado)
+            args=(snapshot_global, evento_apagado, intervalos['6'])
         )
         
         p_sistema_global = multiprocessing.Process(
             target=analizador_sistema_global,
-            args=(snapshot_global, evento_apagado)
+            args=(snapshot_global, evento_apagado, intervalos['7'])
         )
 
         # 2. Los arrancamos en paralelo

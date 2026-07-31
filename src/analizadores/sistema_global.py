@@ -1,9 +1,8 @@
 import os
 import time
 
-def analizador_sistema_global(snapshot_global, evento_apagado):
+def analizador_sistema_global(snapshot_global, evento_apagado, intervalo_val):
     print("[Global System] Analizador iniciado...")
-    intervalo = 3
     
     historial_cpu = {}
 
@@ -102,4 +101,4 @@ def analizador_sistema_global(snapshot_global, evento_apagado):
         
         # Guardamos todo en memoria compartida
         snapshot_global["sistema_global"] = stats
-        time.sleep(intervalo)
+        time.sleep(intervalo_val.value)

@@ -127,16 +127,25 @@ Para que la interfaz gráfica sea verdaderamente útil como herramienta de monit
 
 ---
 
-### IPC: ¿Por qué `Manager` y no `Value`/`Array`?
+### Persistencia de Procesos (Pinning) en la TUI
 
-`multiprocessing.Value` y `Array` están optimizados para tipos simples (un entero, un float, un arreglo de bytes). El snapshot de este monitor es un diccionario anidado con estructura variable por proceso — usar `Value`/`Array` requeriría serializar manualmente toda la estructura. `Manager.dict` maneja eso de forma transparente a costa de overhead de IPC, que es aceptable dado que los intervalos de refresco son de segundos.
+Se diseñó un mecanismo de "pinning" usando la tecla `Enter` que guarda globalmente el PID seleccionado en memoria. La función renderizadora `obtener_top20_y_estado` fue diseñada para inyectar este PID siempre en el tope (posición 0) de la lista *antes* de renderizar. De esta forma, el proceso fijado no solo se marca de color verde, sino que su posición sobrevive a los cambios de vista, filtros, e intervalos de actualización sin perder el foco.
+
+### Scroll Dinámico e Infinito
+
+En lugar de limitar la tabla estrictamente a 20 procesos, el sistema calcula matemáticamente la cantidad de líneas disponibles en el momento exacto usando `shutil.get_terminal_size().lines`. A partir de ese límite dinámico, la lista se segmenta (`lista[offset:offset+limite]`) a medida que el cursor baja. Esto evita que `Rich` trunque la tabla rompiendo el renderizado inferior y permite explorar todos los procesos del sistema, maximizando la usabilidad sin importar cuán pequeña sea la ventana del usuario.
+
+---
+
+### IPC: ¿Por qué `Manager` y `Value` combinados?
+
+`Manager.dict` es ideal para el snapshot global porque es un diccionario anidado con estructura variable (usar array serializado sería ineficiente y difícil). Sin embargo, para los intervalos de los analizadores, usar `Manager` introduciría latencia y bloqueo innecesario por cada loop de `time.sleep()`. Por eso, se combinó la arquitectura inyectando 7 objetos `multiprocessing.Value('f')` crudos. Al ser floats compartidos en C sin bloqueos pesados de Manager, los analizadores duermen leyendo esa memoria a altísima velocidad, mientras la TUI la modifica asíncronamente con `+` y `-`.
 
 ---
 
 ## Limitaciones conocidas
 
-- Los filtros por nombre (`/`) y usuario (`u`) están definidos en la TUI pero requieren implementar input inline para ser funcionales.
-- El intervalo de refresco de cada vista (ajustable con `+`/`-`) modifica la variable local del display pero aún no comunica el cambio al analizador correspondiente vía `multiprocessing.Value`.
+- No todas las señales están atrapadas todavía (SIGHUP, SIGUSR1, SIGUSR2). Faltan los comandos especiales para interactuar con ellas desde la terminal, como dumpear los logs en vivo.
 
 ---
 

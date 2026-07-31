@@ -1,9 +1,8 @@
 import os
 import time
 
-def analizador_threads(snapshot_global, evento_apagado):
+def analizador_threads(snapshot_global, evento_apagado, intervalo_val):
     print("[Threads] Analizador iniciado...")
-    intervalo = 2
     hertz = os.sysconf("SC_CLK_TCK")  # jiffies por segundo (normalmente 100)
 
     # Historial de ticks por (pid, tid) para calcular el delta de CPU
@@ -86,4 +85,4 @@ def analizador_threads(snapshot_global, evento_apagado):
 
         # Reasignamos el dict completo para que el Manager propague el cambio
         snapshot_global["threads"] = threads_local
-        time.sleep(intervalo)
+        time.sleep(intervalo_val.value)

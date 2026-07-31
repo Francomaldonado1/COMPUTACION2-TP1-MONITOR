@@ -27,6 +27,7 @@ pid_fijado    = None       # PID "pinneado" con Enter
 _enter_press  = False      # flag: True por un frame cuando se presiona Enter
 orden_vista1  = 'rss'      # 'rss' | 'cpu' | 'pid'  (cicla con c)
 intervalo     = 2          # segundos entre refresco, ajustado con +/-
+intervalos_global = None   # referencia a los Valores compartidos multiprocessing
 _lock_estado  = threading.Lock()  # protege las variables anteriores
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -147,7 +148,10 @@ def _pie_estado():
         fc = filtro_cmd
         fu = filtro_usr
         o  = orden_vista1
-        iv = intervalo
+        va = vista_activa
+        iv = intervalos_global[va].value if intervalos_global and va in intervalos_global else 2.0
+        if isinstance(iv, float) and iv.is_integer():
+            iv = int(iv)
         pf = pid_fijado
 
     partes = []
@@ -711,7 +715,9 @@ def generar_tabla(snapshot_global):
     return Group(tabla, _pie_estado())
 
 
-def proceso_display(snapshot_global, evento_apagado):
+def proceso_display(snapshot_global, evento_apagado, intervalos=None):
+    global intervalos_global
+    intervalos_global = intervalos
     """Proceso principal de la TUI."""
     print("[TUI] Iniciando interfaz interactiva...")
 
@@ -727,8 +733,8 @@ def proceso_display(snapshot_global, evento_apagado):
             while not evento_apagado.is_set():
                 live.update(generar_tabla(snapshot_global))
                 with _lock_estado:
-                    iv = intervalo
-                for _ in range(max(1, iv * 4)):
+                    iv = intervalos_global[vista_activa].value if intervalos_global and vista_activa in intervalos_global else 2.0
+                for _ in range(max(1, int(iv * 4))):
                     if evento_apagado.is_set():
                         break
                     time.sleep(0.25)

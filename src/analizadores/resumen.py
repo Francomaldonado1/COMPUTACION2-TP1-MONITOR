@@ -3,9 +3,8 @@ import os
 import pwd
 
 
-def analizador_resumen(snapshot_global, evento_apagado):
+def analizador_resumen(snapshot_global, evento_apagado, intervalo_val):
     print("[Resumen] Analizador iniciado...")
-    intervalo = 2 # El resumen suele actualizarse rápido
 
     # El procesador de Linux se mide en "Hertz" (ticks por segundo). Suele ser 100.
     hertz = os.sysconf(os.sysconf_names['SC_CLK_TCK'])
@@ -91,5 +90,5 @@ def analizador_resumen(snapshot_global, evento_apagado):
                 continue
                 
         snapshot_global["resumen"] = resumen_local
-        time.sleep(intervalo)
+        time.sleep(intervalo_val.value)
 

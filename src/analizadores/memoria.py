@@ -61,9 +61,8 @@ def leer_segmentos_maps(pid):
 
 
 # --- ANALIZADOR PRINCIPAL ---
-def analizador_memoria(snapshot_global, evento_apagado):
+def analizador_memoria(snapshot_global, evento_apagado, intervalo_val):
     print("[Memoria] Analizador iniciado...")
-    intervalo = 3
 
     # Los campos que nos interesan de /proc/<pid>/status
     campos_buscados = (
@@ -117,4 +116,4 @@ def analizador_memoria(snapshot_global, evento_apagado):
 
         # Reasignamos el dict completo para que el Manager propague el cambio a todos los procesos
         snapshot_global["memoria"] = memoria_local
-        time.sleep(intervalo)
+        time.sleep(intervalo_val.value)

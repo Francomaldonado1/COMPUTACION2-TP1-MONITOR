@@ -38,9 +38,8 @@ def decodificar_mascara(mascara_hex):
             
     return resultado if resultado else "-"
 
-def analizador_senales(snapshot_global, evento_apagado):
+def analizador_senales(snapshot_global, evento_apagado, intervalo_val):
     print("[Señales] Analizador iniciado...")
-    intervalo = 5
 
     while not evento_apagado.is_set():
         pids = snapshot_global["sistema"].get("pids_activos", [])
@@ -75,4 +74,4 @@ def analizador_senales(snapshot_global, evento_apagado):
                 continue
                 
         snapshot_global["senales"] = senales_local
-        time.sleep(intervalo)
+        time.sleep(intervalo_val.value)
