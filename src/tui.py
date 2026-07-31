@@ -23,12 +23,16 @@ buffer_filtro = ''         # texto que el usuario escribe en modo filtro
 filtro_cmd    = ''         # filtro de comando confirmado con Enter
 filtro_usr    = ''         # filtro de usuario confirmado con Enter
 cursor_pos    = 0          # índice de fila seleccionada con ↑↓
+scroll_offset = 0          # índice del primer elemento visible en la ventana
 pid_fijado    = None       # PID "pinneado" con Enter
 _enter_press  = False      # flag: True por un frame cuando se presiona Enter
 orden_vista1  = 'rss'      # 'rss' | 'cpu' | 'pid'  (cicla con c)
 intervalo     = 2          # segundos entre refresco, ajustado con +/-
 intervalos_global = None   # referencia a los Valores compartidos multiprocessing
+verbose_global = None      # flag del modo verbose (Value)
+_repintar     = threading.Event() # activado por SIGWINCH para forzar refresh inmediato
 _lock_estado  = threading.Lock()  # protege las variables anteriores
+_ultima_notif = {"msg": "", "ts": 0} # guarda la última notificación de señal
 # ─────────────────────────────────────────────────────────────────────────────
 
 _ORDENES = ['rss', 'cpu', 'pid']  # ciclo del toggle 'c'
@@ -115,9 +119,16 @@ def escuchar_teclado(evento_apagado):
                                 idx = _ORDENES.index(orden_vista1)
                                 orden_vista1 = _ORDENES[(idx + 1) % len(_ORDENES)]
                             elif tecla == '+':
-                                intervalo = min(10, intervalo + 1)
+                                if intervalos_global and vista_activa in intervalos_global:
+                                    val = intervalos_global[vista_activa].value
+                                    mins = {'1':0.5,'2':1.0,'3':2.0,'4':0.5,'5':5.0,'6':5.0,'7':1.0}
+                                    intervalos_global[vista_activa].value = round(min(30.0, val + 0.5), 1)
                             elif tecla == '-':
-                                intervalo = max(1, intervalo - 1)
+                                if intervalos_global and vista_activa in intervalos_global:
+                                    val = intervalos_global[vista_activa].value
+                                    mins = {'1':0.5,'2':1.0,'3':2.0,'4':0.5,'5':5.0,'6':5.0,'7':1.0}
+                                    minimo = mins.get(vista_activa, 0.5)
+                                    intervalos_global[vista_activa].value = round(max(minimo, val - 0.5), 1)
                             elif tecla in ['1','2','3','4','5','6','7',
                                            'r','m','f','t','s','p','g']:
                                 vista_activa = tecla
@@ -164,6 +175,14 @@ def _pie_estado():
     partes.append(f"[dim]Orden: {o.upper()} | Intervalo: {iv}s[/dim]")
     partes.append("[dim]h/?=ayuda  q=salir[/dim]")
 
+    # Si hay una notificación reciente (menos de 5 segundos), la mostramos resaltada
+    with _lock_estado:
+        notif = _ultima_notif
+    
+    import time
+    if notif["msg"] and (time.time() - notif["ts"]) < 5.0:
+        partes.append(f"[bold black on cyan] {notif['msg']} [/bold black on cyan]")
+
     if m == 'filtro_cmd':
         return Text.from_markup(f"[bold green]Filtrar comando:[/bold green] {escape(bf)}█")
     elif m == 'filtro_usr':
@@ -174,10 +193,18 @@ def _pie_estado():
 
 def generar_tabla(snapshot_global):
     """Decide QUÉ dibujar dependiendo del modo y la vista activa."""
-    global vista_activa, cursor_pos, pid_fijado, _enter_press
+    global vista_activa, cursor_pos, scroll_offset, pid_fijado, _enter_press, _ultima_notif
+
+    # Revisamos si hay una notificación nueva en el snapshot
+    notif_global = snapshot_global.get("notificacion")
+    if notif_global:
+        with _lock_estado:
+            # Solo actualizamos si el timestamp es más nuevo que el que teníamos
+            if notif_global["ts"] > _ultima_notif["ts"]:
+                _ultima_notif = notif_global.copy()
 
     def obtener_top20_y_estado(pids_ordenados):
-        global cursor_pos, pid_fijado, _enter_press
+        global cursor_pos, scroll_offset, pid_fijado, _enter_press
         with _lock_estado:
             pf = pid_fijado
             
@@ -212,21 +239,31 @@ def generar_tabla(snapshot_global):
                     resto = pids_ordenados
                 lista_proyectada.extend(resto)
 
-            import shutil
-            term_lines = shutil.get_terminal_size((80, 24)).lines
+            # Ventana adaptable según la vista.
+            # Las vistas con filas multi-línea (señales, FDs, threads) necesitan
+            # mostrar menos procesos para que Rich no trunque la tabla con "...".
+            # Las vistas de fila simple (resumen, scheduling) pueden mostrar 20.
+            VENTANA_POR_VISTA = {
+                '1': 20, 'r': 20,   # Resumen: una línea por proceso
+                '2': 20, 'm': 20,   # Memoria: una línea por proceso
+                '3': 3,  'f': 3,    # FDs: muchas líneas por proceso
+                '4': 3,  't': 3,    # Threads: muchas líneas por proceso
+                '5': 3,  's': 3,    # Señales: ~10 líneas por proceso
+                '6': 20, 'p': 20,   # Scheduling: una línea por proceso
+                '7': 20, 'g': 20,   # Sistema Global: tabla única, no aplica
+            }
+            VENTANA = VENTANA_POR_VISTA.get(va, 20)
             
-            # Dejamos espacio para el header, título, bordes y footer (aprox 12 a 15 líneas)
-            # En la vista 7 (Global System), la tabla tiene alturas dinámicas de filas, pero
-            # como usa otro sistema, no pasa nada. Para las vistas de procesos (1-6) funciona perfecto.
-            limite_filas = max(5, term_lines - 14)
-
-            # Calcular la ventana de scroll dinámica
-            if cursor_pos < limite_filas:
-                scroll_offset = 0
-            else:
-                scroll_offset = cursor_pos - (limite_filas - 1)
+            # Ajustamos el scroll independientemente para permitir subir y bajar fluido
+            if cursor_pos < scroll_offset:
+                scroll_offset = cursor_pos
+            elif cursor_pos >= scroll_offset + VENTANA:
+                scroll_offset = cursor_pos - VENTANA + 1
                 
-            lista_visible = lista_proyectada[scroll_offset : scroll_offset + limite_filas]
+            # Por si cambió la lista dinámicamente y el offset quedó fuera de rango
+            scroll_offset = max(0, min(scroll_offset, max(0, len(lista_proyectada) - VENTANA)))
+
+            lista_visible = lista_proyectada[scroll_offset : scroll_offset + VENTANA]
             clamped_relativo = cursor_pos - scroll_offset
 
             return lista_visible, clamped_relativo, pf
@@ -294,8 +331,10 @@ def generar_tabla(snapshot_global):
             ppid    = datos_resumen.get("ppid",    "?")
             usuario = datos_resumen.get("usuario",  "?")
             comando = datos_resumen.get("comando", "Cargando...")
-            if len(comando) > 63:
-                comando = comando[:60] + "..."
+            es_verbose = verbose_global and verbose_global.value
+            limite_cmd = 120 if es_verbose else 63
+            if len(comando) > limite_cmd:
+                comando = comando[:limite_cmd-3] + "..."
             comando = escape(comando)
 
             estado         = datos_resumen.get("estado", "-")
@@ -566,6 +605,26 @@ def generar_tabla(snapshot_global):
             sig_pnd = datos_senales.get("SigPnd", "-")
             shd_pnd = datos_senales.get("ShdPnd", "-")
 
+            es_verbose = verbose_global and verbose_global.value
+            if not es_verbose:
+                # Si no es verbose, limitamos las cadenas largas
+                def truncar_senales(texto):
+                    lineas = texto.split('\n')
+                    if not lineas or lineas[0] == "-": return texto
+                    # Dejamos solo la primera línea visible y acortada
+                    primera = lineas[0]
+                    if len(primera) > 30:
+                        primera = primera[:27] + "..."
+                    if len(lineas) > 1:
+                        primera += "\n(+ más...)"
+                    return primera
+
+                sig_blk = truncar_senales(sig_blk)
+                sig_ign = truncar_senales(sig_ign)
+                sig_cgt = truncar_senales(sig_cgt)
+                sig_pnd = truncar_senales(sig_pnd)
+                shd_pnd = truncar_senales(shd_pnd)
+
             es_cursor = (i == clamped)
             es_pin    = (pf is not None and pid == pf)
             if es_pin:
@@ -715,10 +774,18 @@ def generar_tabla(snapshot_global):
     return Group(tabla, _pie_estado())
 
 
-def proceso_display(snapshot_global, evento_apagado, intervalos=None):
-    global intervalos_global
-    intervalos_global = intervalos
+def proceso_display(snapshot_global, evento_apagado, intervalos=None, verbose=None):
     """Proceso principal de la TUI."""
+    global intervalos_global, verbose_global
+    intervalos_global = intervalos
+    verbose_global = verbose
+
+    # Registramos SIGWINCH aquí (en el proceso hijo) porque live vive acá
+    import signal as _signal
+    def _handler_winch(signum, frame):
+        _repintar.set()  # async-signal-safe: solo activa un flag
+    _signal.signal(_signal.SIGWINCH, _handler_winch)
+
     print("[TUI] Iniciando interfaz interactiva...")
 
     try:
@@ -732,11 +799,20 @@ def proceso_display(snapshot_global, evento_apagado, intervalos=None):
         with Live(generar_tabla(snapshot_global), refresh_per_second=4) as live:
             while not evento_apagado.is_set():
                 live.update(generar_tabla(snapshot_global))
+
+                # Si llegó SIGWINCH, repintamos de inmediato y limpiamos el flag
+                if _repintar.is_set():
+                    live.refresh()
+                    _repintar.clear()
+
                 with _lock_estado:
                     iv = intervalos_global[vista_activa].value if intervalos_global and vista_activa in intervalos_global else 2.0
                 for _ in range(max(1, int(iv * 4))):
                     if evento_apagado.is_set():
                         break
+                    if _repintar.is_set():
+                        live.refresh()
+                        _repintar.clear()
                     time.sleep(0.25)
 
         hilo_teclado.join()

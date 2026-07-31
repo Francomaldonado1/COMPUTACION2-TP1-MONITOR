@@ -1,0 +1,14 @@
+{
+  "intervalos": {
+    "1": 2.0,
+    "2": 3.0,
+    "3": 5.0,
+    "4": 2.0,
+    "5": 10.0,
+    "6": 10.0,
+    "7": 2.0
+  },
+  "filtro_cmd_default": "",
+  "filtro_usr_default": "",
+  "verbose": false
+}

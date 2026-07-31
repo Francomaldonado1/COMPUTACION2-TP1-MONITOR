@@ -137,15 +137,33 @@ En lugar de limitar la tabla estrictamente a 20 procesos, el sistema calcula mat
 
 ---
 
-### IPC: ¿Por qué `Manager` y `Value` combinados?
+### Señales: Patrón Self-Pipe para Async-Signal-Safety
+
+Los handlers de señal en Linux tienen restricciones muy severas: no pueden hacer I/O bloqueante, no pueden pedir memoria, no pueden bloquear. Si llamamos a `print()`, `json.dump()` o cualquier función de `rich` desde un handler, corremos el riesgo de un deadlock si la señal interrumpe al programa justo en medio de otra operación similar.
+
+Para resolverlo implementamos el **patrón self-pipe**: el handler solo ejecuta `os.write(pipe, bytes([signum]))`, que es una llamada al sistema atómica y 100% async-signal-safe. Un hilo separado (`loop_senales`) lee ese byte del pipe y ejecuta la acción real (recargar config, dumpear JSON, etc.) sin ninguna restricción. Este patrón fue visto en clase 6.
+
+### Señales: Timeout de `select()` para Shutdown Limpio
+
+El loop que lee del self-pipe usa `select.select([pipe_r], [], [], 1.0)`. El timeout de 1 segundo es una decisión deliberada entre dos extremos problemáticos:
+- **Timeout 0** (polling): el hilo gira miles de veces por segundo sin hacer nada útil, consumiendo CPU innecesariamente (busy wait).
+- **Sin timeout** (bloqueante infinito): si no llega ninguna señal, el hilo queda colgado para siempre y nunca puede detectar que `evento_apagado` fue activado, impidiendo el shutdown limpio.
+
+Con 1 segundo, el hilo duerme eficientemente y despierta a tiempo para chequear la condición de salida cuando el usuario presiona `q`.
+
+### Señales: SIGWINCH dentro del Proceso de la TUI
+
+SIGWINCH (redimensión de terminal) se registra directamente dentro del proceso hijo `proceso_display`, no en el loop central de señales del padre. La razón es la barrera de memoria entre procesos: el objeto `live` de Rich vive en el proceso hijo. Aunque importáramos `_repintar` (un `threading.Event`) desde el padre y lo seteáramos, estaríamos modificando una copia en otro espacio de memoria, sin efecto sobre el proceso hijo.
+
+Para compartir estado entre procesos se requiere IPC (`multiprocessing.Event`, pipes, etc.), lo cual hubiera introducido complejidad innecesaria. Al registrar SIGWINCH localmente dentro del hijo, el handler activa directamente el `threading.Event` correcto, y el loop de `live` llama a `live.refresh()` en la siguiente iteración (máximo 0.25 segundos después).
 
 `Manager.dict` es ideal para el snapshot global porque es un diccionario anidado con estructura variable (usar array serializado sería ineficiente y difícil). Sin embargo, para los intervalos de los analizadores, usar `Manager` introduciría latencia y bloqueo innecesario por cada loop de `time.sleep()`. Por eso, se combinó la arquitectura inyectando 7 objetos `multiprocessing.Value('f')` crudos. Al ser floats compartidos en C sin bloqueos pesados de Manager, los analizadores duermen leyendo esa memoria a altísima velocidad, mientras la TUI la modifica asíncronamente con `+` y `-`.
 
----
+### TUI: Scroll Adaptativo y Tamaño de Ventana
 
-## Limitaciones conocidas
+El diseño inicial intentaba usar `shutil.get_terminal_size()` para calcular cuántos procesos dibujar dinámicamente y permitir el scroll. Sin embargo, en un proceso hijo generado por `multiprocessing`, esto devuelve valores por defecto (ej. 24 líneas). Además, las vistas que contienen datos multilínea (Señales, FDs, Threads) provocaban que Rich truncara la tabla con "..." si se intentaban mostrar demasiados procesos.
 
-- No todas las señales están atrapadas todavía (SIGHUP, SIGUSR1, SIGUSR2). Faltan los comandos especiales para interactuar con ellas desde la terminal, como dumpear los logs en vivo.
+La decisión fue implementar una **ventana de scroll de tamaño fijo, pero adaptable por vista**. Las vistas simples (Resumen) muestran 20 procesos, mientras que las vistas densas (Señales) muestran solo 3. El `scroll_offset` se calcula independientemente de la posición del cursor (`cursor_pos`) garantizando que al presionar ↑ o ↓ la vista se desplace de a un elemento por vez, sin saltos ("smooth scrolling") y asegurando que Rich nunca se quede sin espacio para dibujar toda la información.
 
 ---
 

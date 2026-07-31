@@ -1,4 +1,5 @@
 import multiprocessing
+import threading
 import signal
 import time
 import os
@@ -12,7 +13,12 @@ from src.analizadores.senales import analizador_senales
 from src.analizadores.scheduling import analizador_scheduling
 from src.analizadores.sistema_global import analizador_sistema_global
 
-# Importamos nuestro nuevo display
+# Importamos el manejador de señales con patrón self-pipe
+from src.senales_monitor import (
+    registrar_handlers, loop_senales, set_verbose_value
+)
+
+# Importamos la TUI
 from src.tui import proceso_display
 
 # Simulamos el Recolector (que buscará los PIDs numéricos en /proc)
@@ -61,12 +67,12 @@ def iniciar_monitor():
             '7': multiprocessing.Value('f', 2.0),  # Sistema Global
         }
 
-        # 3. Configuramos la señal de apagado limpio
-        def mi_manejador(signum, frame):
-            print("\n[Monitor] ¡SIGINT (Ctrl+C) detectado! Apagando...")
-            evento_apagado.set()
+        # Modo verbose: compartido entre proceso principal y la TUI
+        verbose = multiprocessing.Value('i', 0)  # 0 = off, 1 = on
+        set_verbose_value(verbose)
 
-        signal.signal(signal.SIGINT, mi_manejador)
+        # 3. Registramos todos los handlers de señal usando el patrón self-pipe
+        registrar_handlers()
 
         # 4. Levantamos el proceso Recolector
         p_recolector = multiprocessing.Process(
@@ -76,7 +82,7 @@ def iniciar_monitor():
 
         p_display = multiprocessing.Process(
             target=proceso_display,
-            args=(snapshot_global, evento_apagado, intervalos)
+            args=(snapshot_global, evento_apagado, intervalos, verbose)
         )
 
         p_resumen = multiprocessing.Process(
@@ -125,9 +131,17 @@ def iniciar_monitor():
         p_scheduling.start()
         p_sistema_global.start()
 
-        # El padre queda mudo esperando el Ctrl+C
-        while not evento_apagado.is_set():
-            time.sleep(1)
+        # El padre corre el loop de señales (self-pipe) en un hilo dedicado.
+        # Esto libera al proceso principal para hacer join() limpio al salir.
+        hilo_senales = threading.Thread(
+            target=loop_senales,
+            args=(evento_apagado, intervalos, snapshot_global),
+            daemon=True
+        )
+        hilo_senales.start()
+
+        # El padre espera a que el evento de apagado sea activado
+        evento_apagado.wait()
 
         # 5. Limpieza (evitamos zombies)
         p_recolector.join()
