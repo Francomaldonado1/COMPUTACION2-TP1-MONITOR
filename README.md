@@ -1,6 +1,7 @@
 # Monitor de Procesos — TP1 Computación II
 
 **Universidad de Mendoza | Ingeniería Informática**
+**Alumno:** Franco Maldonado
 
 ---
 
@@ -10,12 +11,7 @@ Monitor de procesos en tiempo real para Linux, similar a `htop`, que muestra la 
 
 El sistema es multiproceso: un recolector central lista los PIDs activos, 7 analizadores especializados corren en paralelo extrayendo distintas dimensiones de cada proceso, y un proceso de display renderiza la TUI en tiempo real.
 
-**Uso:**
-```bash
-docker compose up --build
-# o en desarrollo local:
-python3 app.py
-```
+*(Para ver las instrucciones de instalación y ejecución detalladas, bajá a la sección **"Cómo correr y testear"**).*
 
 **Keybindings:**
 | Tecla | Acción |
