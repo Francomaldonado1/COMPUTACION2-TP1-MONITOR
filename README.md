@@ -49,6 +49,19 @@ python3 app.py
 
 ## Decisiones de diseño
 
+### Encapsulamiento vs `procfs.py` centralizado
+
+Aunque la estructura de archivos sugerida por la cátedra incluía un archivo helper `procfs.py` para centralizar el parseo de `/proc`, se tomó la decisión consciente de **no implementarlo** en favor de una arquitectura orientada a componentes. 
+
+En lugar de tener un único archivo que concentre toda la lógica de lectura, decidimos delegar y encapsular la lógica de parseo del `/proc` dentro de cada analizador específico en `src/analizadores/` (ej. `memoria.py` sabe leer `/proc/<pid>/statm`, `fds.py` lee `/proc/<pid>/fd/`, etc.). 
+
+Esta decisión se basa en el **Principio de Responsabilidad Única (SRP)**:
+- Cada analizador es autónomo y autocontenido.
+- Evita que un archivo central (`procfs.py`) crezca desproporcionadamente al agregar más métricas en el futuro.
+- Permite que cada proceso analizador se inicialice y trabaje sin dependencias externas pesadas.
+
+*(Nota: Como consecuencia de esta modularización final, el archivo original de pruebas `reader.py` quedó obsoleto y fue eliminado del proyecto).*
+
 ### ¿Por qué `Manager.dict` y no un `dict` normal?
 
 Cuando se hace `fork()` para crear un proceso hijo, Python aplica Copy-on-Write (COW): el hijo obtiene una copia del espacio de memoria del padre. Cualquier modificación en el hijo **no se propaga al padre ni a otros hijos** — cada proceso tiene su propia copia aislada.
@@ -221,4 +234,19 @@ Podrás ver las notificaciones de éxito directamente en la barra inferior de la
 
 ## Lo que aprendí
 
-*(Completar al final del TP)*
+Durante el desarrollo de este trabajo práctico, me enfrenté a varios desafíos arquitectónicos y técnicos que me ayudaron a comprender profundamente cómo funciona Linux por debajo y cómo interactúa Python con el sistema operativo:
+
+1. **Multiprocessing vs Multithreading y el GIL:** 
+   Aprendí que en Python, debido al *Global Interpreter Lock* (GIL), los hilos (`threading`) no ejecutan código Python en paralelo real, pero son perfectos para tareas I/O-bound (como esperar la entrada del teclado en la TUI). Para los analizadores, que requieren verdadero paralelismo, fue necesario usar `multiprocessing.Process` para saltarse el GIL, ya que cada proceso tiene su propio intérprete y memoria.
+
+2. **Memoria Compartida (IPC):**
+   Al usar `multiprocessing`, descubrí que un diccionario normal no se comparte entre procesos debido a que la llamada `fork()` de Linux duplica la memoria (Copy-On-Write). Para solucionar esto, aprendí a usar `multiprocessing.Manager()` para compartir la gran estructura de datos del `snapshot_global`, y objetos `multiprocessing.Value` para compartir los intervalos de tiempo, ya que estos últimos son mucho más rápidos (memoria compartida a nivel de C) y evitan los bloqueos del Manager en cada ciclo de `sleep`.
+
+3. **Manejo Seguro de Señales (Patrón Self-Pipe):**
+   Fue un gran aprendizaje descubrir que las señales interrumpen el flujo normal del programa (lanzando `InterruptedError` en funciones como `sleep`). Aprendí a implementar el patrón *Self-Pipe*: los *handlers* de las señales hacen lo mínimo indispensable (escribir un byte en un pipe) y el programa principal lee ese pipe de forma segura usando `select()`. 
+
+4. **El Sistema de Archivos `/proc`:**
+   Comprendí que en Linux "todo es un archivo". Pude construir un monitor completo (memoria, hilos, FDs, scheduling) simplemente leyendo archivos de texto plano dentro de `/proc/<pid>/` sin necesidad de librerías mágicas o binarios externos.
+
+5. **Namespaces en Docker:**
+   Aprendí que Docker funciona aislando procesos (namespaces). Al intentar contenerizar el monitor, me di cuenta de que por defecto solo veía sus propios procesos. Tuve que aprender sobre `pid: "host"` y el modo `privileged` para romper intencionalmente ese aislamiento y permitir que el contenedor acceda al `/proc` real de la máquina anfitriona.
